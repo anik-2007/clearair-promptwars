@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ClearAir — Urban Air Quality Assistant</title>
+<style>
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --text:#152019; --muted:#5c6b63;
+  --accent:#2f8f6f; --accent-ink:#ffffff; --border:#dde6e1; --chip:#eef4f1;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10160f; --surface:#182019; --text:#e9f1ec; --muted:#9fb0a8;
+    --accent:#4fb98c; --accent-ink:#06130d; --border:#2a352e; --chip:#1f2a24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10160f; --surface:#182019; --text:#e9f1ec; --muted:#9fb0a8;
+  --accent:#4fb98c; --accent-ink:#06130d; --border:#2a352e; --chip:#1f2a24;
+  color-scheme: dark;
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:env(safe-area-inset-top,0px) 16px calc(env(safe-area-inset-bottom,0px) + 32px);
+}
+.wrap{max-width:640px; margin:0 auto;}
+header{padding:28px 4px 12px;}
+header h1{font-size:1.5rem; margin:0 0 4px;}
+header p{color:var(--muted); margin:0; font-size:.95rem;}
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:20px; margin-bottom:16px;
+}
+label{display:block; font-size:.85rem; font-weight:600; margin:14px 0 6px;}
+label:first-child{margin-top:0;}
+input[type=text], select{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:1rem;
+}
+fieldset{border:none; padding:0; margin:14px 0 0;}
+fieldset legend{font-size:.85rem; font-weight:600; padding:0; margin-bottom:6px;}
+.checks{display:flex; flex-direction:column; gap:8px;}
+.chk{
+  display:flex; align-items:center; gap:10px; background:var(--chip);
+  border-radius:10px; padding:10px 12px; font-size:.92rem; cursor:pointer;
+}
+.chk input{width:18px; height:18px; flex:none;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+button{
+  padding:13px; border:none; border-radius:12px;
+  background:var(--accent); color:var(--accent-ink); font-size:1rem; font-weight:700;
+  cursor:pointer;
+}
+#go{width:100%; margin-top:18px;}
+button:disabled{opacity:.6;}
+#resultHeading{font-size:1.1rem; margin:0 0 10px; outline:none;}
+#result h3{font-size:1.02rem; margin:18px 0 6px;}
+#result h3:first-child{margin-top:0;}
+#result ul{margin:4px 0 10px; padding-left:20px;}
+#result li{margin:4px 0; font-size:.95rem;}
+#result p{font-size:.95rem; line-height:1.5;}
+.muted{color:var(--muted); font-size:.92rem;}
+.stream{white-space:pre-wrap; font-family:inherit; font-size:.92rem; color:var(--muted); margin:0;}
+#chat{margin-top:10px;}
+.msg-user{background:var(--chip); border-radius:10px; padding:8px 12px; font-size:.92rem; margin:8px 0 0;}
+.msg-ai{margin:6px 0 0;}
+.followrow{display:flex; gap:8px; margin-top:14px;}
+.followrow input{flex:1;}
+.followrow button{flex:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span aria-hidden="true">🌫️</span> ClearAir</h1>
+    <p>Personalized winter smog guidance for your home and commute.</p>
+  </header>
+
+  <form class="card" id="form">
+    <label for="city">Your city or area</label>
+    <input id="city" type="text" placeholder="e.g. Delhi, Lahore, Dhaka" />
+
+    <label for="aqi">Today's air quality</label>
+    <select id="aqi">
+      <option>Good</option>
+      <option>Moderate</option>
+      <option selected>Unhealthy for sensitive groups</option>
+      <option>Unhealthy</option>
+      <option>Very unhealthy</option>
+      <option>Hazardous</option>
+    </select>
+
+    <fieldset>
+      <legend>Household</legend>
+      <div class="checks">
+        <label class="chk"><input id="kids" type="checkbox" /> Young children or elderly at home</label>
+        <label class="chk"><input id="resp" type="checkbox" /> Someone has asthma or a respiratory condition</label>
+        <label class="chk"><input id="outdoor" type="checkbox" /> Needs to be outdoors for work</label>
+        <label class="chk"><input id="novehicle" type="checkbox" /> Relies on walking or a two-wheeler</label>
+      </div>
+    </fieldset>
+
+    <div class="row2">
+      <div>
+        <label for="commute">Main commute</label>
+        <select id="commute">
+          <option>Car</option>
+          <option>Two-wheeler / scooter</option>
+          <option>Public transit (bus/metro)</option>
+          <option>Walk or cycle</option>
+          <option>Mostly stay home</option>
+        </select>
+      </div>
+      <div>
+        <label for="home">Home type</label>
+        <select id="home">
+          <option>Apartment</option>
+          <option>Independent house</option>
+        </select>
+      </div>
+    </div>
+    <label class="chk" style="margin-top:12px;"><input id="purifier" type="checkbox" /> I have an air purifier</label>
+
+    <button id="go" type="submit">Get my plan</button>
+  </form>
+
+  <section class="card" id="resultCard" style="display:none;">
+    <h2 id="resultHeading" tabindex="-1">Your plan</h2>
+    <div id="result" role="status" aria-live="polite"></div>
+    <div id="chat" aria-live="polite"></div>
+    <form id="followupForm" class="followrow" style="display:none;">
+      <div style="flex:1;">
+        <label for="followup">Ask a follow-up</label>
+        <input id="followup" type="text" placeholder="e.g. What about my toddler's school commute?" />
+      </div>
+      <button id="askBtn" type="submit" style="align-self:end;">Ask</button>
+    </form>
+  </section>
+</div>
+
+<script>
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function inline(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
+function renderMd(t){
+  const lines=t.split('\n'); let html=''; let inList=false;
+  for(let line of lines){
+    line=line.trim();
+    if(!line){ if(inList){html+='</ul>'; inList=false;} continue; }
+    if(line.startsWith('## ')){ if(inList){html+='</ul>'; inList=false;} html+='<h3>'+inline(line.slice(3))+'</h3>'; continue; }
+    if(line.startsWith('- ')){ if(!inList){html+='<ul>'; inList=true;} html+='<li>'+inline(line.slice(2))+'</li>'; continue; }
+    if(inList){html+='</ul>'; inList=false;}
+    html+='<p>'+inline(line)+'</p>';
+  }
+  if(inList) html+='</ul>';
+  return html;
+}
+function getFormInputs(){
+  const v=id=>document.getElementById(id);
+  return {city:v('city').value.trim()||'your area', aqi:v('aqi').value, commute:v('commute').value,
+    home:v('home').value, purifier:v('purifier').checked, kids:v('kids').checked, resp:v('resp').checked,
+    outdoor:v('outdoor').checked, novehicle:v('novehicle').checked};
+}
+function computeAssessment(inputs){
+  const city=inputs.city, aqi=inputs.aqi;
+  const sevMap={'Good':0,'Moderate':1,'Unhealthy for sensitive groups':2,'Unhealthy':3,'Very unhealthy':4,'Hazardous':5};
+  const sev=(sevMap[aqi] ?? 2);
+  const commute=inputs.commute, home=inputs.home, purifier=inputs.purifier;
+  const kids=inputs.kids, resp=inputs.resp, outdoor=inputs.outdoor, novehicle=inputs.novehicle;
+  const tier=['Low','Low','Moderate','Elevated','High','Severe'][sev];
+  const sensitiveUrgent = sev>=3 && (kids||resp);
+  const outdoorRisk = outdoor && sev>=2;
+  let commuteRisk='Low';
+  if(commute==='Two-wheeler / scooter') commuteRisk = sev>=2?'High':'Moderate';
+  else if(commute==='Car') commuteRisk = sev>=3?'Moderate':'Low';
+  else if(commute==='Walk or cycle') commuteRisk = sev>=3?'High':'Moderate';
+  else if(commute==='Public transit (bus/metro)') commuteRisk='Moderate';
+  let indoorRisk='Low';
+  if(!purifier && home==='Apartment' && sev>=3) indoorRisk='Elevated';
+  else if(!purifier && sev>=3) indoorRisk='Moderate';
+  const actionLevel = sensitiveUrgent ? 'urgent' : (sev>=3 ? 'elevated' : 'routine');
+  const signals=['City: '+city,'AQI tier: '+tier+' ('+aqi+')','Overall action level: '+actionLevel,
+    'Commute exposure risk ('+commute+'): '+commuteRisk,
+    'Indoor air risk ('+home+(purifier?', has purifier':', no purifier')+'): '+indoorRisk];
+  if(sensitiveUrgent) signals.push('Flag: a child, elderly person, or someone with a respiratory condition is in this household at an elevated-or-higher AQI tier \u2014 treat as high priority.');
+  if(outdoorRisk) signals.push('Flag: this person must be outdoors for work at an elevated-or-higher AQI tier.');
+  if(novehicle) signals.push('Flag: relies on walking or a two-wheeler, limited vehicle access.');
+  const cityLower=city.toLowerCase();
+  let regionNote=null;
+  if(cityLower.includes('delhi')||cityLower.includes('ncr')||cityLower.includes('gurugram')||cityLower.includes('noida')) regionNote='Winter smog here is driven heavily by crop-residue burning plus temperature inversion, typically peaking late Oct through Jan.';
+  else if(cityLower.includes('lahore')||cityLower.includes('punjab')) regionNote='This region shares the same cross-border crop-burning and inversion pattern as nearby North India, peaking in the same Oct\u2013Jan window.';
+  else if(cityLower.includes('dhaka')) regionNote='Dhaka\u2019s dry-season smog (roughly Nov\u2013Feb) is driven more by vehicle and brick-kiln emissions trapped by low winter wind speeds.';
+  if(regionNote) signals.push('Local pattern: '+regionNote);
+  return signals;
+}
+function buildInitialPrompt(signals){
+  return 'A rule engine has already assessed this household\u2019s situation for severe winter smog. Use these computed signals as ground truth \u2014 do not re-grade severity yourself, just explain and act on them:\n\n'
+  +signals.join('\n')
+  +'\n\nWrite a personalized plan for this household. Use this exact structure, plain text with simple markdown (## headers, - bullets, **bold** for key numbers), no preamble, no closing remarks:\n\n'
+  +'## Today\'s low-emission routine\n3 to 4 short, concrete bullets, matching the urgency of the action level above.\n\n'
+  +'## Indoor air quality hacks\n3 to 4 bullets matching the indoor air risk above.\n\n'
+  +'## Sustainable alternatives for your commute\n3 to 4 bullets matching the commute risk above, each naming a rough emissions or exposure comparison.\n\n'
+  +'## Community actions\n2 bullets on collective, neighborhood-level steps (carpools, reporting pollution sources to local authorities, joining or starting a local air-quality watch group) relevant to this city and commute mode \u2014 this is about community impact, not just the individual household.\n\n'
+  +'## Why this matters for your household\n2 to 3 plain-language sentences that reference the specific flags above, including the local smog pattern note if one was given.';
+}
+let convo=[];
+document.getElementById('form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const btn=document.getElementById('go'); btn.disabled=true; btn.textContent='Thinking…';
+  const card=document.getElementById('resultCard'); const result=document.getElementById('result');
+  document.getElementById('chat').innerHTML='';
+  document.getElementById('followupForm').style.display='none';
+  card.style.display='block';
+  result.innerHTML='<p class="muted">Running the assessment and writing your plan…</p>';
+  try{
+    const sample=await claude.use('sample');
+    if(!sample){ result.innerHTML='<p class="muted">The AI assistant isn\u2019t available in this view.</p>'; }
+    else{
+      const prompt=buildInitialPrompt(computeAssessment(getFormInputs()));
+      const res=await sample(prompt,{modelTier:'default',onText:function(o){ result.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
+      result.innerHTML=renderMd(res.text);
+      convo=[{role:'user',content:prompt},{role:'assistant',content:res.text}];
+      document.getElementById('followupForm').style.display='flex';
+      document.getElementById('resultHeading').focus();
+    }
+  }catch(err){
+    if(err && err.code==='not_granted') result.innerHTML='<p class="muted">Permission was declined. You can allow it from the artifact menu and try again.</p>';
+    else if(err && err.code==='rate_limited') result.innerHTML='<p class="muted">Getting a lot of requests right now — try again in a moment.</p>';
+    else result.innerHTML='<p class="muted">Something went wrong generating your plan. Please try again.</p>';
+  }
+  btn.disabled=false; btn.textContent='Get my plan';
+});
+document.getElementById('followupForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const input=document.getElementById('followup'); const q=input.value.trim();
+  if(!q) return;
+  const chat=document.getElementById('chat'); const askBtn=document.getElementById('askBtn');
+  chat.insertAdjacentHTML('beforeend','<p class="msg-user"><strong>You:</strong> '+esc(q)+'</p>');
+  input.value=''; input.disabled=true; askBtn.disabled=true;
+  const holder=document.createElement('div'); holder.className='msg-ai'; holder.innerHTML='<p class="muted">Thinking…</p>';
+  chat.appendChild(holder);
+  convo.push({role:'user',content:q});
+  try{
+    const sample=await claude.use('sample');
+    const res=await sample(convo,{modelTier:'default',onText:function(o){ holder.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
+    holder.innerHTML=renderMd(res.text);
+    convo.push({role:'assistant',content:res.text});
+  }catch(err){
+    holder.innerHTML='<p class="muted">Couldn\u2019t get an answer just now \u2014 try again.</p>';
+    convo.pop();
+  }
+  input.disabled=false; askBtn.disabled=false; input.focus();
+});
+</script>
+</body>
+</html>
