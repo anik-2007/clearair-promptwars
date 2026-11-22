@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>ClearAir — Unit Tests</title>
+<style>
+body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 16px;}
+.pass{color:#2f8f6f;} .fail{color:#c0392b;font-weight:700;}
+li{margin:6px 0;font-size:.95rem;}
+</style></head>
+<body>
+<h1>ClearAir — unit tests</h1>
+<p>Open this file directly in a browser. Each test checks the rule engine (computeAssessment) and renderer (renderMd/inline) against a specific scenario.</p>
+<ul id="results"></ul>
+<p id="summary"></p>
+<script>
+function computeAssessment(inputs){
+  const city=inputs.city, aqi=inputs.aqi;
+  const sevMap={'Good':0,'Moderate':1,'Unhealthy for sensitive groups':2,'Unhealthy':3,'Very unhealthy':4,'Hazardous':5};
+  const sev=(sevMap[aqi] ?? 2);
+  const commute=inputs.commute, home=inputs.home, purifier=inputs.purifier;
+  const kids=inputs.kids, resp=inputs.resp, outdoor=inputs.outdoor, novehicle=inputs.novehicle;
+  const tier=['Low','Low','Moderate','Elevated','High','Severe'][sev];
+  const sensitiveUrgent = sev>=3 && (kids||resp);
+  const outdoorRisk = outdoor && sev>=2;
+  let commuteRisk='Low';
+  if(commute==='Two-wheeler / scooter') commuteRisk = sev>=2?'High':'Moderate';
+  else if(commute==='Car') commuteRisk = sev>=3?'Moderate':'Low';
+  else if(commute==='Walk or cycle') commuteRisk = sev>=3?'High':'Moderate';
+  else if(commute==='Public transit (bus/metro)') commuteRisk='Moderate';
+  let indoorRisk='Low';
+  if(!purifier && home==='Apartment' && sev>=3) indoorRisk='Elevated';
+  else if(!purifier && sev>=3) indoorRisk='Moderate';
+  const actionLevel = sensitiveUrgent ? 'urgent' : (sev>=3 ? 'elevated' : 'routine');
+  const signals=['City: '+city,'AQI tier: '+tier+' ('+aqi+')','Overall action level: '+actionLevel,
+    'Commute exposure risk ('+commute+'): '+commuteRisk,
+    'Indoor air risk ('+home+(purifier?', has purifier':', no purifier')+'): '+indoorRisk];
+  if(sensitiveUrgent) signals.push('Flag: a child, elderly person, or someone with a respiratory condition is in this household at an elevated-or-higher AQI tier \u2014 treat as high priority.');
+  if(outdoorRisk) signals.push('Flag: this person must be outdoors for work at an elevated-or-higher AQI tier.');
+  if(novehicle) signals.push('Flag: relies on walking or a two-wheeler, limited vehicle access.');
+  const cityLower=city.toLowerCase();
+  let regionNote=null;
+  if(cityLower.includes('delhi')||cityLower.includes('ncr')||cityLower.includes('gurugram')||cityLower.includes('noida')) regionNote='Winter smog here is driven heavily by crop-residue burning plus temperature inversion, typically peaking late Oct through Jan.';
+  else if(cityLower.includes('lahore')||cityLower.includes('punjab')) regionNote='This region shares the same cross-border crop-burning and inversion pattern as nearby North India, peaking in the same Oct\u2013Jan window.';
+  else if(cityLower.includes('dhaka')) regionNote='Dhaka\u2019s dry-season smog (roughly Nov\u2013Feb) is driven more by vehicle and brick-kiln emissions trapped by low winter wind speeds.';
+  if(regionNote) signals.push('Local pattern: '+regionNote);
+  return signals;
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function inline(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
+function renderMd(t){
+  const lines=t.split('\n'); let html=''; let inList=false;
+  for(let line of lines){
+    line=line.trim();
+    if(!line){ if(inList){html+='</ul>'; inList=false;} continue; }
+    if(line.startsWith('## ')){ if(inList){html+='</ul>'; inList=false;} html+='<h3>'+inline(line.slice(3))+'</h3>'; continue; }
+    if(line.startsWith('- ')){ if(!inList){html+='<ul>'; inList=true;} html+='<li>'+inline(line.slice(2))+'</li>'; continue; }
+    if(inList){html+='</ul>'; inList=false;}
+    html+='<p>'+inline(line)+'</p>';
+  }
+  if(inList) html+='</ul>';
+  return html;
+}
+let pass=0, fail=0;
+function check(name, actual, expected){
+  const ok = JSON.stringify(actual)===JSON.stringify(expected);
+  if(ok) pass++; else fail++;
+  const li=document.createElement('li');
+  li.className=ok?'pass':'fail';
+  li.textContent=(ok?'PASS':'FAIL')+' \u2014 '+name+(ok?'':' (got '+JSON.stringify(actual)+', expected '+JSON.stringify(expected)+')');
+  document.getElementById('results').appendChild(li);
+}
+const base={city:'Delhi',aqi:'Good',commute:'Car',home:'Apartment',purifier:false,kids:false,resp:false,outdoor:false,novehicle:false};
+
+check('Good AQI + no risk factors => routine action level',
+  computeAssessment(base).some(function(s){return s.includes('action level: routine');}), true);
+
+check('Hazardous AQI + child at home => urgent action level',
+  computeAssessment(Object.assign({},base,{aqi:'Hazardous',kids:true})).some(function(s){return s.includes('action level: urgent');}), true);
+
+check('Two-wheeler commute at Unhealthy AQI => High commute risk',
+  computeAssessment(Object.assign({},base,{aqi:'Unhealthy',commute:'Two-wheeler / scooter'})).some(function(s){return s.includes('Commute exposure risk')&&s.includes('High');}), true);
+
+check('No purifier + apartment + Very unhealthy AQI => Elevated indoor risk',
+  computeAssessment(Object.assign({},base,{aqi:'Very unhealthy',purifier:false})).some(function(s){return s.includes('Indoor air risk')&&s.includes('Elevated');}), true);
+
+check('Outdoor-worker flag does NOT appear when AQI is Good',
+  computeAssessment(Object.assign({},base,{aqi:'Good',outdoor:true})).some(function(s){return s.includes('must be outdoors');}), false);
+
+check('renderMd converts a heading line to <h3>',
+  renderMd('## Title').indexOf('<h3>Title</h3>')!==-1, true);
+
+check('renderMd converts bullet lines to a <ul><li> list',
+  renderMd('- one\n- two').indexOf('<li>one</li><li>two</li>')!==-1, true);
+
+check('inline() escapes raw HTML tags from model output',
+  inline('<b>test</b>'), '&lt;b&gt;test&lt;/b&gt;');
+
+check('inline() still converts **text** markdown to <strong>',
+  inline('**bold**'), '<strong>bold</strong>');
+
+check('Delhi input adds a local smog-pattern signal',
+  computeAssessment(Object.assign({},base,{city:'Delhi'})).some(function(s){return s.indexOf('Local pattern')===0;}), true);
+
+document.getElementById('summary').textContent = pass+' passed, '+fail+' failed.';
+</script>
+</body>
+</html>
