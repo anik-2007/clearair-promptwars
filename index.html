@@ -73,6 +73,8 @@ button:disabled{opacity:.6;}
 .followrow{display:flex; gap:8px; margin-top:14px;}
 .followrow input{flex:1;}
 .followrow button{flex:none;}
+#enrichRow{margin-top:16px; padding-top:16px; border-top:1px solid var(--border);}
+#enrichBtn{width:auto; padding:10px 16px;}
 </style>
 </head>
 <body>
@@ -133,6 +135,10 @@ button:disabled{opacity:.6;}
   <section class="card" id="resultCard" style="display:none;">
     <h2 id="resultHeading" tabindex="-1">Your plan</h2>
     <div id="result" role="status" aria-live="polite"></div>
+    <div id="enrichRow" style="display:none;">
+      <button id="enrichBtn" type="button">✨ Get a richer AI explanation</button>
+      <p class="muted" style="margin-top:6px;">This calls Claude live and may ask you to sign in.</p>
+    </div>
     <div id="chat" aria-live="polite"></div>
     <form id="followupForm" class="followrow" style="display:none;">
       <div style="flex:1;">
@@ -166,7 +172,7 @@ function getFormInputs(){
     home:v('home').value, purifier:v('purifier').checked, kids:v('kids').checked, resp:v('resp').checked,
     outdoor:v('outdoor').checked, novehicle:v('novehicle').checked};
 }
-function computeAssessment(inputs){
+function deriveFacts(inputs){
   const city=inputs.city, aqi=inputs.aqi;
   const sevMap={'Good':0,'Moderate':1,'Unhealthy for sensitive groups':2,'Unhealthy':3,'Very unhealthy':4,'Hazardous':5};
   const sev=(sevMap[aqi] ?? 2);
@@ -184,18 +190,22 @@ function computeAssessment(inputs){
   if(!purifier && home==='Apartment' && sev>=3) indoorRisk='Elevated';
   else if(!purifier && sev>=3) indoorRisk='Moderate';
   const actionLevel = sensitiveUrgent ? 'urgent' : (sev>=3 ? 'elevated' : 'routine');
-  const signals=['City: '+city,'AQI tier: '+tier+' ('+aqi+')','Overall action level: '+actionLevel,
-    'Commute exposure risk ('+commute+'): '+commuteRisk,
-    'Indoor air risk ('+home+(purifier?', has purifier':', no purifier')+'): '+indoorRisk];
-  if(sensitiveUrgent) signals.push('Flag: a child, elderly person, or someone with a respiratory condition is in this household at an elevated-or-higher AQI tier \u2014 treat as high priority.');
-  if(outdoorRisk) signals.push('Flag: this person must be outdoors for work at an elevated-or-higher AQI tier.');
-  if(novehicle) signals.push('Flag: relies on walking or a two-wheeler, limited vehicle access.');
   const cityLower=city.toLowerCase();
   let regionNote=null;
   if(cityLower.includes('delhi')||cityLower.includes('ncr')||cityLower.includes('gurugram')||cityLower.includes('noida')) regionNote='Winter smog here is driven heavily by crop-residue burning plus temperature inversion, typically peaking late Oct through Jan.';
   else if(cityLower.includes('lahore')||cityLower.includes('punjab')) regionNote='This region shares the same cross-border crop-burning and inversion pattern as nearby North India, peaking in the same Oct\u2013Jan window.';
   else if(cityLower.includes('dhaka')) regionNote='Dhaka\u2019s dry-season smog (roughly Nov\u2013Feb) is driven more by vehicle and brick-kiln emissions trapped by low winter wind speeds.';
-  if(regionNote) signals.push('Local pattern: '+regionNote);
+  return {city,aqi,sev,tier,commute,home,purifier,kids,resp,outdoor,novehicle,sensitiveUrgent,outdoorRisk,commuteRisk,indoorRisk,actionLevel,regionNote};
+}
+function computeAssessment(inputs){
+  const f=deriveFacts(inputs);
+  const signals=['City: '+f.city,'AQI tier: '+f.tier+' ('+f.aqi+')','Overall action level: '+f.actionLevel,
+    'Commute exposure risk ('+f.commute+'): '+f.commuteRisk,
+    'Indoor air risk ('+f.home+(f.purifier?', has purifier':', no purifier')+'): '+f.indoorRisk];
+  if(f.sensitiveUrgent) signals.push('Flag: a child, elderly person, or someone with a respiratory condition is in this household at an elevated-or-higher AQI tier \u2014 treat as high priority.');
+  if(f.outdoorRisk) signals.push('Flag: this person must be outdoors for work at an elevated-or-higher AQI tier.');
+  if(f.novehicle) signals.push('Flag: relies on walking or a two-wheeler, limited vehicle access.');
+  if(f.regionNote) signals.push('Local pattern: '+f.regionNote);
   return signals;
 }
 function buildInitialPrompt(signals){
@@ -208,32 +218,92 @@ function buildInitialPrompt(signals){
   +'## Community actions\n2 bullets on collective, neighborhood-level steps (carpools, reporting pollution sources to local authorities, joining or starting a local air-quality watch group) relevant to this city and commute mode \u2014 this is about community impact, not just the individual household.\n\n'
   +'## Why this matters for your household\n2 to 3 plain-language sentences that reference the specific flags above, including the local smog pattern note if one was given.';
 }
-let convo=[];
-document.getElementById('form').addEventListener('submit', async function(e){
+function section(title, items){
+  return '<h3>'+title+'</h3><ul>'+items.map(function(i){return '<li>'+i+'</li>';}).join('')+'</ul>';
+}
+function generateFallbackPlan(inputs){
+  const f=deriveFacts(inputs);
+  const routine=[];
+  routine.push('Check today\u2019s AQI for '+f.city+' before heading out, and plan errands around the quieter midday hours rather than early morning or evening rush.');
+  if(f.sev>=2) routine.push('Shift outdoor exercise or walks to midday, when traffic-driven smog is usually lower than at sunrise or dusk.');
+  if(f.sev>=3) routine.push('Wear a well-fitted N95/FFP2 mask for any time spent outdoors today.');
+  if(f.sev>=4) routine.push('Postpone non-essential outdoor errands entirely \u2014 today\u2019s level is high enough that even short exposure adds up.');
+  if(f.outdoorRisk) routine.push('If you must work outdoors, take an indoor mask-off break every couple of hours rather than one long stretch outside.');
+  if(f.sensitiveUrgent) routine.push('Keep kids, elderly family members, or anyone with a respiratory condition indoors during the morning and evening peak hours.');
+  const indoor=[];
+  if(f.purifier){
+    indoor.push('Run your air purifier on a medium, continuous setting in the room you spend most time in, rather than switching it on and off.');
+    indoor.push('Close the door to that room so the purified air doesn\u2019t mix straight back with the rest of the home.');
+  } else {
+    indoor.push('No purifier? A box fan with a HEPA filter taped to the intake works as a low-cost stand-in for a bedroom or living room.');
+    indoor.push('Keep a damp cloth or towel in the main room \u2014 it helps settle floating dust between cleanings.');
+  }
+  if(f.home==='Apartment') indoor.push('Keep windows closed and use a draft stopper on the main door; apartments pick up a surprising amount of smog through hallway gaps.');
+  else indoor.push('Check and seal gaps around external doors, and keep courtyard or balcony doors shut during the morning and evening peaks.');
+  indoor.push('Avoid burning candles, incense, or anything that adds extra particulate matter indoors on high-smog days.');
+  const commuteAlt=[];
+  if(f.commute==='Car'){
+    commuteAlt.push('Combine errands into one trip instead of several short drives \u2014 cold starts produce disproportionately more emissions.');
+    commuteAlt.push('Carpool or switch to public transit for a couple of days this week to meaningfully cut your own contribution.');
+  } else if(f.commute==='Two-wheeler / scooter'){
+    commuteAlt.push('Two-wheeler riders get some of the highest direct exposure in traffic \u2014 a snug mask matters more for you than almost anyone else on the road.');
+  } else if(f.commute==='Public transit (bus/metro)'){
+    commuteAlt.push('You\u2019re already on one of the lower-emission options \u2014 travelling just outside peak hours will cut your personal exposure further.');
+  } else if(f.commute==='Walk or cycle'){
+    commuteAlt.push('Pick a route with less traffic, even if it\u2019s slightly longer \u2014 exposure drops fast with distance from exhaust.');
+    if(f.sev>=3) commuteAlt.push('On days this bad, consider swapping today\u2019s walk or ride for an indoor alternative.');
+  } else {
+    commuteAlt.push('Staying home today is one of the lowest-exposure choices available \u2014 use the indoor tips above to keep that advantage.');
+  }
+  if(f.novehicle) commuteAlt.push('Since you\u2019re often walking or on two-wheels, timing matters more for you than vehicle choice \u2014 avoid the worst hour or two if your schedule allows it.');
+  const community=[
+    'Start or join a small carpool or ride-share group with neighbors who share your commute route \u2014 fewer cars on the same road cuts everyone\u2019s exposure.',
+    'Report persistent local burning, construction dust, or industrial smoke to your local pollution-control helpline \u2014 collective reports carry more weight than one-off complaints.'
+  ];
+  const impact=[];
+  impact.push('At today\u2019s \u201c'+f.aqi.toLowerCase()+'\u201d level, these small shifts meaningfully cut how much smog your household actually breathes in, especially during the morning and evening hours when pollution usually peaks.');
+  if(f.regionNote) impact.push(f.regionNote);
+  if(f.sensitiveUrgent) impact.push('Children, older adults, and anyone with a respiratory condition absorb pollution\u2019s effects faster than a healthy adult, so the indoor-time and masking choices above matter most for them.');
+  return section('Today\u2019s low-emission routine', routine)
+    + section('Indoor air quality hacks', indoor)
+    + section('Sustainable alternatives for your commute', commuteAlt)
+    + section('Community actions', community)
+    + section('Why this matters for your household', impact);
+}
+let convo=[]; let lastInputs=null;
+document.getElementById('form').addEventListener('submit', function(e){
   e.preventDefault();
-  const btn=document.getElementById('go'); btn.disabled=true; btn.textContent='Thinking…';
   const card=document.getElementById('resultCard'); const result=document.getElementById('result');
   document.getElementById('chat').innerHTML='';
   document.getElementById('followupForm').style.display='none';
   card.style.display='block';
-  result.innerHTML='<p class="muted">Running the assessment and writing your plan…</p>';
+  lastInputs=getFormInputs();
+  result.innerHTML=generateFallbackPlan(lastInputs);
+  document.getElementById('enrichRow').style.display='block';
+  const enrichBtn=document.getElementById('enrichBtn'); enrichBtn.disabled=false; enrichBtn.textContent='✨ Get a richer AI explanation';
+  document.getElementById('resultHeading').focus();
+});
+document.getElementById('enrichBtn').addEventListener('click', async function(){
+  const btn=this; btn.disabled=true; btn.textContent='Asking Claude…';
+  const result=document.getElementById('result');
   try{
     const sample=await claude.use('sample');
-    if(!sample){ result.innerHTML='<p class="muted">The AI assistant isn\u2019t available in this view.</p>'; }
-    else{
-      const prompt=buildInitialPrompt(computeAssessment(getFormInputs()));
-      const res=await sample(prompt,{modelTier:'default',onText:function(o){ result.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
-      result.innerHTML=renderMd(res.text);
-      convo=[{role:'user',content:prompt},{role:'assistant',content:res.text}];
-      document.getElementById('followupForm').style.display='flex';
-      document.getElementById('resultHeading').focus();
-    }
+    if(!sample){ throw {code:'no_sample'}; }
+    const prompt=buildInitialPrompt(computeAssessment(lastInputs));
+    const res=await sample(prompt,{modelTier:'default',onText:function(o){ result.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
+    result.innerHTML=renderMd(res.text);
+    convo=[{role:'user',content:prompt},{role:'assistant',content:res.text}];
+    document.getElementById('followupForm').style.display='flex';
+    document.getElementById('enrichRow').style.display='none';
   }catch(err){
-    if(err && err.code==='not_granted') result.innerHTML='<p class="muted">Permission was declined. You can allow it from the artifact menu and try again.</p>';
-    else if(err && err.code==='rate_limited') result.innerHTML='<p class="muted">Getting a lot of requests right now — try again in a moment.</p>';
-    else result.innerHTML='<p class="muted">Something went wrong generating your plan. Please try again.</p>';
+    const code=err && err.code;
+    let msg;
+    if(code==='not_granted') msg='AI permission wasn\u2019t granted \u2014 the recommendations above are the built-in plan.';
+    else if(code==='rate_limited') msg='The AI assistant is busy right now \u2014 try again shortly.';
+    else msg='Live AI isn\u2019t available in this view \u2014 the recommendations above are the built-in plan.';
+    btn.insertAdjacentHTML('afterend','<p class="muted" style="margin-top:8px;">'+msg+'</p>');
+    btn.disabled=false; btn.textContent='✨ Get a richer AI explanation';
   }
-  btn.disabled=false; btn.textContent='Get my plan';
 });
 document.getElementById('followupForm').addEventListener('submit', async function(e){
   e.preventDefault();
