@@ -3,45 +3,44 @@
 **PromptWars (Hack2skill) — Challenge 6: Urban Air Quality Assistant**
 
 ## Problem
-Families in cities with severe winter smog need practical, personalized guidance — not generic air quality tips — to protect their health and reduce their own contribution to pollution.
+Families in cities with severe winter smog need practical, personalized guidance based on actual current conditions — not generic tips, and not a number the user has to guess themselves.
+
+## Live air quality data
+On submit, the app geocodes the entered city and fetches **real-time air quality** (US AQI, PM2.5, PM10) via the free, public **Open-Meteo Air Quality API** — no API key, fetched directly from the browser. The fetched reading is shown on screen (location resolved, US AQI, PM2.5, source, "just now") so it's visibly live data, not a static or generated value.
+
+**Why Open-Meteo instead of OpenAQ/CPCB:** OpenAQ's own documentation states that direct client-side/browser calls to its API are not possible due to CORS policy, and recommends a backend proxy — which this project, a static single-page app with no server, doesn't have. CPCB has no public, CORS-enabled API suitable for direct browser use either. Open-Meteo is free, keyless, and explicitly built for direct client-side consumption, so it was chosen as the real-time data source that could actually work without a backend.
+
+If the city can't be found or the live fetch fails for any reason, the app reveals a manual AQI selector as a fallback so the demo never dead-ends — but live fetch is the default, primary path for every normal use.
+
+**Sample cities to test:** Delhi, Beijing, London, Jakarta, Lahore, Dhaka, Los Angeles — try a clean city (e.g. "Reykjavik") versus a polluted one (e.g. "Delhi" in winter) to see the plan change with real conditions.
 
 ## Approach
-ClearAir uses a hybrid architecture rather than a single prompt wrapped around a form:
+Once the live AQI tier is known, a rule engine computes risk: commute exposure, indoor air risk, location-specific smog drivers (Delhi/Lahore/Dhaka regional patterns), and household priority flags (children/elderly, respiratory conditions, outdoor work, vehicle access). The plan has five sections: today's low-emission routine, indoor air quality hacks, sustainable commute alternatives, community actions (carpools, pollution reporting — addressing *communities*, not just the household), and why it matters for this specific household.
 
-1. A rule engine first computes an AQI severity tier, commute exposure risk, indoor air risk, and priority flags (sensitive household members, outdoor workers, limited vehicle access) directly from the form inputs.
-2. That computed assessment is handed to Claude (Anthropic) as ground truth. Claude's role is to explain it and turn it into a personalized, four-part plan — not to re-judge severity itself.
-3. After the initial plan, the person can ask follow-up questions in a small chat; Claude answers using the full conversation and original assessment as context.
+## Gen AI integration
+A separate, clearly-labeled "✨ Get a richer AI explanation" button is fully opt-in. Clicking it sends Claude the rule engine's live-data-derived assessment (AQI tier, risk levels, flags) as ground truth, and Claude explains and acts on it — the output changes with every different input, nothing is hardcoded. A follow-up Q&A box lets the user ask specific questions with full conversation context. This is opt-in rather than automatic so the core app works instantly for everyone, with Claude enriching rather than gating the experience.
 
-The plan covers five sections: today's low-emission routine, indoor air quality hacks, sustainable commute alternatives, **community actions** (carpools, reporting pollution sources, local air-quality groups — addressing *communities*, not just the individual household), and why it matters for this specific household.
+## Deployment note
+This app makes outbound network calls (Open-Meteo) and must run on a host that allows that — **GitHub Pages or Netlify, not the claude.ai artifact preview**, which blocks all outbound fetches by platform policy. The live AQI fetching simply cannot function there; only a plain static host works for this build.
 
-The city field isn't cosmetic: a small lookup recognizes a few high-smog regions (Delhi/NCR, Lahore/Punjab, Dhaka) and adds the actual local pollution driver (crop-residue burning and inversion vs. brick-kiln/vehicle emissions) as a signal, so the plan is genuinely tailored to location, not just labeled with it.
-
-## Access note
-The live Claude call requires the viewer to be signed into a Claude.ai account (a platform requirement of this hosting, not an app limitation). So the app never depends on that: if Claude isn't available for any reason — signed out, permission not granted, rate-limited — it falls back instantly to the same rule engine's deterministic output, so every visitor sees a complete, working plan with no sign-in required and no dead end. Signed-in visitors who grant permission get the richer, live Claude-written version plus follow-up Q&A.
+## How this maps to the evaluation criteria
+- **Problem Statement Alignment** — real-time external API data drives every recommendation (not static/generated values), covers families *and* communities, and location genuinely changes the output.
+- **Code Quality** — decision logic (`deriveFacts`/`computeAssessment`) is a pure function of its inputs, separated from the live-fetch and DOM-reading code.
+- **Security** — no API keys needed (Open-Meteo is keyless), no external scripts, all dynamic/AI/user text is HTML-escaped before insertion.
+- **Efficiency** — two lightweight API calls per submission, no polling, no unnecessary network calls.
+- **Testing** — `tests.html` runs assertions against the rule engine, the US-AQI-to-tier mapping, and the renderer.
+- **Accessibility** — semantic form/fieldset/legend, aria-live regions, managed focus, high-contrast theming.
 
 ## How it works
 - Plain HTML/CSS/JS, no build step or dependencies
-- `computeAssessment()` in the client does the deterministic reasoning (severity tier, risk levels, flags)
-- Claude (Claude Sonnet) is called at runtime with that assessment plus a structured prompt, and again on each follow-up question with the running conversation
-- Accessible markup: semantic `form`/`fieldset`/`legend`, `aria-live` regions for generated content, managed focus on new results
-- Responsive layout with light/dark theme support
+- `fetchLiveAQI()` geocodes the city then queries Open-Meteo's Air Quality API
+- `deriveFacts()`/`computeAssessment()` turn the live AQI tier plus form inputs into a structured risk assessment
+- Claude (Claude Sonnet) is called only when the user opts in, using that assessment as grounding
 
 ## Assumptions
-- Users self-report current AQI/smog level rather than the app pulling a live feed
 - Recommendations are general health/lifestyle guidance, not medical advice
 - Built as a single-session tool (no login, no saved history) for this submission round
+- Open-Meteo's CAMS-derived air quality model is used as the live data source in place of ground-station networks (OpenAQ/CPCB) that don't support direct browser access
 
 ## Run it
-- Open `index.html` directly in a browser, or
-- Use the deployed link included with this submission
-
-## How this maps to the evaluation criteria
-- **Problem Statement Alignment** — covers families *and* communities (community-actions section), and location is an actual input to the logic, not just a label (see regional smog-driver lookup above).
-- **Code Quality** — decision logic (`computeAssessment`) is a pure function of its inputs, separated from DOM reading (`getFormInputs`), so it's readable and independently testable.
-- **Security** — no external scripts or exposed keys; every piece of AI-generated or user-entered text is HTML-escaped (`esc`/`inline`) before being inserted into the page, preventing injected markup from the model or from form input.
-- **Efficiency** — single small file, no heavy loops, targeted DOM updates (not full re-renders), no network calls beyond the one AI call per turn.
-- **Testing** — `tests.html` runs 10 assertions against the rule engine and renderer (severity tiers, flags, regional notes, markdown rendering, HTML escaping). Open it directly in a browser to see pass/fail results.
-- **Accessibility** — semantic `form`/`fieldset`/`legend`, `aria-live` regions on generated content, managed focus on new results, high-contrast color tokens in both light and dark mode.
-
-## Gen AI services used
-Claude (Anthropic), called live from the browser for the initial personalized plan and for each follow-up question, using a rule-computed assessment as grounding context rather than a single unstructured prompt. Claude was also used throughout development to design and build the codebase.
+Open `index.html` in a browser, or use the deployed GitHub Pages / Netlify link included with this submission.

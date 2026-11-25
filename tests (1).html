@@ -100,6 +100,18 @@ check('inline() still converts **text** markdown to <strong>',
 check('Delhi input adds a local smog-pattern signal',
   computeAssessment(Object.assign({},base,{city:'Delhi'})).some(function(s){return s.indexOf('Local pattern')===0;}), true);
 
+function usAqiToTier(v){
+  if(v<=50) return 'Good';
+  if(v<=100) return 'Moderate';
+  if(v<=150) return 'Unhealthy for sensitive groups';
+  if(v<=200) return 'Unhealthy';
+  if(v<=300) return 'Very unhealthy';
+  return 'Hazardous';
+}
+check('US AQI 42 maps to Good', usAqiToTier(42), 'Good');
+check('US AQI 118 maps to Unhealthy for sensitive groups', usAqiToTier(118), 'Unhealthy for sensitive groups');
+check('US AQI 312 maps to Hazardous', usAqiToTier(312), 'Hazardous');
+
 document.getElementById('summary').textContent = pass+' passed, '+fail+' failed.';
 </script>
 </body>
