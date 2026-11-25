@@ -75,28 +75,21 @@ button:disabled{opacity:.6;}
 .followrow button{flex:none;}
 #enrichRow{margin-top:16px; padding-top:16px; border-top:1px solid var(--border);}
 #enrichBtn{width:auto; padding:10px 16px;}
+#liveReading{border-left:4px solid var(--accent); font-size:.9rem; line-height:1.5;}
+#manualAqiRow{display:none;}
+#manualGoBtn{width:auto; padding:10px 16px;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1><span aria-hidden="true">🌫️</span> ClearAir</h1>
-    <p>Personalized winter smog guidance for your home and commute.</p>
+    <p>Real-time winter smog guidance for your home and commute.</p>
   </header>
 
   <form class="card" id="form">
-    <label for="city">Your city or area</label>
-    <input id="city" type="text" placeholder="e.g. Delhi, Lahore, Dhaka" />
-
-    <label for="aqi">Today's air quality</label>
-    <select id="aqi">
-      <option>Good</option>
-      <option>Moderate</option>
-      <option selected>Unhealthy for sensitive groups</option>
-      <option>Unhealthy</option>
-      <option>Very unhealthy</option>
-      <option>Hazardous</option>
-    </select>
+    <label for="city">Your city (we fetch real-time air quality for it)</label>
+    <input id="city" type="text" placeholder="Try: Delhi, Beijing, London, Jakarta" />
 
     <fieldset>
       <legend>Household</legend>
@@ -132,6 +125,22 @@ button:disabled{opacity:.6;}
     <button id="go" type="submit">Get my plan</button>
   </form>
 
+  <div class="card" id="manualAqiRow">
+    <p class="muted" id="manualAqiMsg"></p>
+    <label for="aqi">Set AQI manually</label>
+    <select id="aqi">
+      <option>Good</option>
+      <option>Moderate</option>
+      <option selected>Unhealthy for sensitive groups</option>
+      <option>Unhealthy</option>
+      <option>Very unhealthy</option>
+      <option>Hazardous</option>
+    </select>
+    <button id="manualGoBtn" type="button">Use this instead</button>
+  </div>
+
+  <div class="card" id="liveReading" style="display:none;"></div>
+
   <section class="card" id="resultCard" style="display:none;">
     <h2 id="resultHeading" tabindex="-1">Your plan</h2>
     <div id="result" role="status" aria-live="polite"></div>
@@ -165,6 +174,28 @@ function renderMd(t){
   }
   if(inList) html+='</ul>';
   return html;
+}
+function usAqiToTier(v){
+  if(v<=50) return 'Good';
+  if(v<=100) return 'Moderate';
+  if(v<=150) return 'Unhealthy for sensitive groups';
+  if(v<=200) return 'Unhealthy';
+  if(v<=300) return 'Very unhealthy';
+  return 'Hazardous';
+}
+async function fetchLiveAQI(cityName){
+  const geoRes=await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name='+encodeURIComponent(cityName));
+  if(!geoRes.ok) throw new Error('location lookup failed');
+  const geo=await geoRes.json();
+  if(!geo.results || !geo.results.length) throw new Error('city not found');
+  const loc=geo.results[0];
+  const aqRes=await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+loc.latitude+'&longitude='+loc.longitude+'&current=us_aqi,pm2_5,pm10&timezone=auto');
+  if(!aqRes.ok) throw new Error('air quality lookup failed');
+  const aq=await aqRes.json();
+  const cur=aq.current;
+  if(!cur || cur.us_aqi==null) throw new Error('no air quality data for this location');
+  const usAqi=Math.round(cur.us_aqi);
+  return {resolvedName:loc.name, country:loc.country||'', usAqi:usAqi, pm25:cur.pm2_5, tier:usAqiToTier(usAqi)};
 }
 function getFormInputs(){
   const v=id=>document.getElementById(id);
@@ -209,7 +240,7 @@ function computeAssessment(inputs){
   return signals;
 }
 function buildInitialPrompt(signals){
-  return 'A rule engine has already assessed this household\u2019s situation for severe winter smog. Use these computed signals as ground truth \u2014 do not re-grade severity yourself, just explain and act on them:\n\n'
+  return 'A rule engine has already assessed this household\u2019s situation using live air-quality data. Use these computed signals as ground truth \u2014 do not re-grade severity yourself, just explain and act on them:\n\n'
   +signals.join('\n')
   +'\n\nWrite a personalized plan for this household. Use this exact structure, plain text with simple markdown (## headers, - bullets, **bold** for key numbers), no preamble, no closing remarks:\n\n'
   +'## Today\'s low-emission routine\n3 to 4 short, concrete bullets, matching the urgency of the action level above.\n\n'
@@ -271,18 +302,39 @@ function generateFallbackPlan(inputs){
     + section('Why this matters for your household', impact);
 }
 let convo=[]; let lastInputs=null;
-document.getElementById('form').addEventListener('submit', function(e){
-  e.preventDefault();
-  const card=document.getElementById('resultCard'); const result=document.getElementById('result');
-  document.getElementById('chat').innerHTML='';
-  document.getElementById('followupForm').style.display='none';
-  card.style.display='block';
+function showPlan(){
   lastInputs=getFormInputs();
-  result.innerHTML=generateFallbackPlan(lastInputs);
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('result').innerHTML=generateFallbackPlan(lastInputs);
   document.getElementById('enrichRow').style.display='block';
   const enrichBtn=document.getElementById('enrichBtn'); enrichBtn.disabled=false; enrichBtn.textContent='✨ Get a richer AI explanation';
   document.getElementById('resultHeading').focus();
+}
+document.getElementById('form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  document.getElementById('chat').innerHTML='';
+  document.getElementById('followupForm').style.display='none';
+  document.getElementById('manualAqiRow').style.display='none';
+  document.getElementById('liveReading').style.display='none';
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('result').innerHTML='<p class="muted">Fetching real-time air quality…</p>';
+  const cityName=document.getElementById('city').value.trim();
+  if(!cityName){ document.getElementById('result').innerHTML='<p class="muted">Enter a city first.</p>'; return; }
+  try{
+    const live=await fetchLiveAQI(cityName);
+    const lr=document.getElementById('liveReading');
+    lr.innerHTML='<strong>📡 Live reading</strong> \u2014 '+esc(live.resolvedName)+(live.country?', '+esc(live.country):'')+': US AQI '+live.usAqi+' (PM2.5 '+live.pm25+' \u00b5g/m\u00b3) \u2192 '+live.tier+'. Source: Open-Meteo, just now.';
+    lr.style.display='block';
+    document.getElementById('aqi').value=live.tier;
+    showPlan();
+  }catch(err){
+    document.getElementById('manualAqiRow').style.display='block';
+    document.getElementById('manualAqiMsg').textContent='Couldn\u2019t fetch live data for "'+cityName+'" ('+(err && err.message)+'). Pick a level manually and click "Use this instead."';
+    document.getElementById('result').innerHTML='';
+    document.getElementById('resultCard').style.display='none';
+  }
 });
+document.getElementById('manualGoBtn').addEventListener('click', showPlan);
 document.getElementById('enrichBtn').addEventListener('click', async function(){
   const btn=this; btn.disabled=true; btn.textContent='Asking Claude…';
   const result=document.getElementById('result');
