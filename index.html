@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ClearAir — Urban Air Quality Assistant</title>
+<style>
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --text:#152019; --muted:#5c6b63;
+  --accent:#2e9e5b; --accent2:#1fb6a6; --accent-ink:#ffffff; --border:#dde6e1; --chip:#eef4f1;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10160f; --surface:#182019; --text:#e9f1ec; --muted:#9fb0a8;
+    --accent:#4fb98c; --accent2:#3fd1be; --accent-ink:#06130d; --border:#2a352e; --chip:#1f2a24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10160f; --surface:#182019; --text:#e9f1ec; --muted:#9fb0a8;
+  --accent:#4fb98c; --accent2:#3fd1be; --accent-ink:#06130d; --border:#2a352e; --chip:#1f2a24;
+  color-scheme: dark;
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; color:var(--text);
+  background:
+    radial-gradient(900px circle at 8% -10%, rgba(46,158,91,.10), transparent 55%),
+    radial-gradient(800px circle at 92% 0%, rgba(31,182,166,.10), transparent 55%),
+    var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:env(safe-area-inset-top,0px) 16px calc(env(safe-area-inset-bottom,0px) + 32px);
+}
+.wrap{max-width:640px; margin:0 auto;}
+@keyframes shimmer{0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;}}
+@keyframes pulse{0%,100%{transform:scale(1); opacity:1;} 50%{transform:scale(1.07); opacity:.9;}}
+@keyframes livedot{0%,100%{opacity:1;} 50%{opacity:.25;}}
+header{padding:36px 4px 18px;}
+header h1{font-size:2.1rem; margin:0 0 8px; letter-spacing:-.02em; font-weight:800; display:flex; align-items:center;
+  background:linear-gradient(90deg, var(--accent), var(--accent2));
+  background-size:200% auto;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:shimmer 4s ease-in-out infinite;}
+.logo-badge{display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px;
+  border-radius:50%; background:linear-gradient(135deg, var(--accent), var(--accent2));
+  box-shadow:0 3px 10px rgba(0,0,0,.18); margin-right:10px; flex:none;
+  animation:pulse 3s ease-in-out infinite;}
+.logo-badge svg{width:22px; height:22px;}
+header p{color:var(--muted); margin:0; font-size:1.08rem; font-weight:500;}
+.hero-badge{display:inline-flex; align-items:center; gap:7px; background:var(--chip); color:var(--accent);
+  font-size:.78rem; font-weight:700; padding:6px 14px; border-radius:999px; margin-top:14px; letter-spacing:.02em;}
+.live-dot{width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; animation:livedot 1.4s ease-in-out infinite;}
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:18px;
+  padding:20px; margin-bottom:16px; box-shadow:0 2px 12px rgba(0,0,0,.07);
+}
+label{display:block; font-size:.85rem; font-weight:600; margin:14px 0 6px;}
+label:first-child{margin-top:0;}
+input[type=text], select{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:1rem;
+}
+fieldset{border:none; padding:0; margin:14px 0 0;}
+fieldset legend{font-size:.85rem; font-weight:600; padding:0; margin-bottom:6px;}
+.checks{display:flex; flex-direction:column; gap:8px;}
+.chk{
+  display:flex; align-items:center; gap:10px; background:var(--chip);
+  border-radius:10px; padding:10px 12px; font-size:.92rem; cursor:pointer;
+}
+.chk input{width:18px; height:18px; flex:none;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+button{
+  padding:14px; border:none; border-radius:12px;
+  background:linear-gradient(135deg, var(--accent), var(--accent2)); color:var(--accent-ink); font-size:1rem; font-weight:700;
+  cursor:pointer; transition:transform .15s ease, box-shadow .15s ease;
+}
+button:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.14);}
+#go{width:100%; margin-top:18px;}
+button:disabled{opacity:.6;}
+#resultHeading{font-size:1.1rem; margin:0 0 10px; outline:none;}
+#result h3{font-size:1.02rem; margin:18px 0 6px;}
+#result h3:first-child{margin-top:0;}
+#result ul{margin:4px 0 10px; padding-left:20px;}
+#result li{margin:4px 0; font-size:.95rem;}
+#result p{font-size:.95rem; line-height:1.5;}
+.muted{color:var(--muted); font-size:.92rem;}
+.stream{white-space:pre-wrap; font-family:inherit; font-size:.92rem; color:var(--muted); margin:0;}
+#chat{margin-top:10px;}
+.msg-user{background:var(--chip); border-radius:10px; padding:8px 12px; font-size:.92rem; margin:8px 0 0;}
+.msg-ai{margin:6px 0 0;}
+.followrow{display:flex; gap:8px; margin-top:14px;}
+.followrow input{flex:1;}
+.followrow button{flex:none;}
+#enrichRow{margin-top:16px; padding-top:16px; border-top:1px solid var(--border);}
+#enrichBtn{width:auto; padding:10px 16px;}
+#manualAqiRow{display:none;}
+#manualGoBtn{width:auto; padding:10px 16px;}
+#liveReading{display:none;}
+.aqi-display{display:flex; gap:16px; align-items:center;}
+.aqi-badge{flex:none; width:92px; height:92px; border-radius:50%; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; font-weight:800; box-shadow:0 2px 10px rgba(0,0,0,.18);}
+.aqi-num{font-size:1.55rem; line-height:1;}
+.aqi-label{font-size:.56rem; letter-spacing:.06em; margin-top:3px; text-align:center;}
+.aqi-meta{flex:1; min-width:0;}
+.aqi-city{font-weight:700; margin-bottom:8px; font-size:1.02rem;}
+.aqi-gauge{height:8px; border-radius:4px; background:var(--chip); overflow:hidden; margin-bottom:8px;}
+.aqi-gauge-fill{height:100%; border-radius:4px; transition:width .5s ease;}
+@keyframes fadeUp{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+#result > *, #liveReading{animation:fadeUp .4s ease both;}
+#result > *:nth-child(1){animation-delay:.02s}
+#result > *:nth-child(2){animation-delay:.08s}
+#result > *:nth-child(3){animation-delay:.14s}
+#result > *:nth-child(4){animation-delay:.20s}
+#result > *:nth-child(5){animation-delay:.26s}
+#result > *:nth-child(6){animation-delay:.32s}
+#result > *:nth-child(7){animation-delay:.38s}
+#result > *:nth-child(8){animation-delay:.44s}
+#result > *:nth-child(9){animation-delay:.50s}
+#result > *:nth-child(10){animation-delay:.56s}
+#result > *:nth-child(11){animation-delay:.62s}
+@media (prefers-reduced-motion: reduce){ *{animation-duration:.01ms !important; animation-delay:0s !important;} }
+.warn-banner{background:#fff1f0; border:1px solid #ffb4b0; color:#7a1a16; border-radius:12px; padding:12px 14px; margin-bottom:4px; font-size:.92rem; line-height:1.5;}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .warn-banner{background:#2a1414; border-color:#5c2622; color:#ffb4b0;} }
+:root[data-theme="dark"] .warn-banner{background:#2a1414; border-color:#5c2622; color:#ffb4b0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="logo-badge" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9 7 4 9 4 14a8 8 0 0 0 16 0c0-5-5-7-8-12z" fill="#ffffff"/></svg></span>ClearAir</h1>
+    <p>Real-time winter smog guidance for your home and commute.</p>
+    <div class="hero-badge"><span class="live-dot"></span>Live AQI Data · GenAI-Powered</div>
+  </header>
+
+  <form class="card" id="form">
+    <label for="city">Your city (we fetch real-time air quality for it)</label>
+    <input id="city" type="text" placeholder="Try: Delhi, Beijing, London, Jakarta" />
+
+    <fieldset>
+      <legend>Household</legend>
+      <div class="checks">
+        <label class="chk"><input id="kids" type="checkbox" /> Young children at home</label>
+        <label class="chk"><input id="elderly" type="checkbox" /> A senior citizen at home</label>
+        <label class="chk"><input id="resp" type="checkbox" /> Someone has asthma or a respiratory condition</label>
+        <label class="chk"><input id="outdoor" type="checkbox" /> Needs to be outdoors for work</label>
+        <label class="chk"><input id="novehicle" type="checkbox" /> Relies on walking or a two-wheeler</label>
+      </div>
+    </fieldset>
+
+    <div class="row2">
+      <div>
+        <label for="commute">Main commute</label>
+        <select id="commute">
+          <option>Car</option>
+          <option>Two-wheeler / scooter</option>
+          <option>Public transit (bus/metro)</option>
+          <option>Walk or cycle</option>
+          <option>Mostly stay home</option>
+        </select>
+      </div>
+      <div>
+        <label for="home">Home type</label>
+        <select id="home">
+          <option>Apartment</option>
+          <option>Independent house</option>
+        </select>
+      </div>
+    </div>
+    <label class="chk" style="margin-top:12px;"><input id="purifier" type="checkbox" /> I have an air purifier</label>
+
+    <button id="go" type="submit">Get my plan</button>
+  </form>
+
+  <div class="card" id="manualAqiRow">
+    <p class="muted" id="manualAqiMsg"></p>
+    <label for="aqi">Set AQI manually</label>
+    <select id="aqi">
+      <option>Good</option>
+      <option>Moderate</option>
+      <option selected>Unhealthy for sensitive groups</option>
+      <option>Unhealthy</option>
+      <option>Very unhealthy</option>
+      <option>Hazardous</option>
+    </select>
+    <button id="manualGoBtn" type="button">Use this instead</button>
+  </div>
+
+  <div class="card" id="liveReading" aria-live="polite"></div>
+
+  <section class="card" id="resultCard" style="display:none;">
+    <h2 id="resultHeading" tabindex="-1">Your plan</h2>
+    <div id="result" role="status" aria-live="polite"></div>
+    <div id="enrichRow" style="display:none;">
+      <button id="enrichBtn" type="button">✨ Get a richer AI explanation</button>
+      <p class="muted" style="margin-top:6px;">This calls Claude live and may ask you to sign in.</p>
+    </div>
+    <div id="chat" aria-live="polite"></div>
+    <form id="followupForm" class="followrow" style="display:none;">
+      <div style="flex:1;">
+        <label for="followup">Ask a follow-up</label>
+        <input id="followup" type="text" placeholder="e.g. What about my toddler's school commute?" />
+      </div>
+      <button id="askBtn" type="submit" style="align-self:end;">Ask</button>
+    </form>
+  </section>
+</div>
+
+<script>
+/*
+ * ClearAir architecture
+ * 1. fetchLiveAQI() geocodes the entered city and pulls real-time AQI/PM2.5/PM10
+ *    from Open-Meteo (chosen because OpenAQ blocks direct browser calls via CORS).
+ * 2. deriveFacts()/computeAssessment() turn that live reading plus the form's
+ *    household/commute/home inputs into a structured, deterministic risk
+ *    assessment -- pure functions, no DOM access, independently unit-tested
+ *    in tests.html.
+ * 3. generateFallbackPlan() renders that assessment into a complete plan
+ *    instantly, with no network/AI dependency, so the app always works.
+ * 4. "Get a richer AI explanation" is a fully separate, opt-in step: only
+ *    then is Claude called, given the already-computed assessment as
+ *    grounding, to explain and elaborate on it conversationally.
+ */
+
+/** Escapes HTML special characters so dynamic/AI/user text can't inject markup. */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/** Escapes text, then converts **bold** markdown to <strong> for display. */
+function inline(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
+function renderMd(t){
+  const lines=t.split('\n'); let html=''; let inList=false;
+  for(let line of lines){
+    line=line.trim();
+    if(!line){ if(inList){html+='</ul>'; inList=false;} continue; }
+    if(line.startsWith('## ')){ if(inList){html+='</ul>'; inList=false;} html+='<h3>'+inline(line.slice(3))+'</h3>'; continue; }
+    if(line.startsWith('- ')){ if(!inList){html+='<ul>'; inList=true;} html+='<li>'+inline(line.slice(2))+'</li>'; continue; }
+    if(inList){html+='</ul>'; inList=false;}
+    html+='<p>'+inline(line)+'</p>';
+  }
+  if(inList) html+='</ul>';
+  return html;
+}
+/** Maps a US AQI number (0-500 scale) to the six-tier label used throughout the UI and prompts. */
+function usAqiToTier(v){
+  if(v<=50) return 'Good';
+  if(v<=100) return 'Moderate';
+  if(v<=150) return 'Unhealthy for sensitive groups';
+  if(v<=200) return 'Unhealthy';
+  if(v<=300) return 'Very unhealthy';
+  return 'Hazardous';
+}
+/** Maps a US AQI number to the standard EPA badge color (green through maroon) for the live-reading display. */
+function aqiColor(v){
+  if(v<=50) return {bg:'#00e400', fg:'#0c2b06'};
+  if(v<=100) return {bg:'#ffff00', fg:'#3a3200'};
+  if(v<=150) return {bg:'#ff7e00', fg:'#3a1e00'};
+  if(v<=200) return {bg:'#ff0000', fg:'#ffffff'};
+  if(v<=300) return {bg:'#8f3f97', fg:'#ffffff'};
+  return {bg:'#7e0023', fg:'#ffffff'};
+}
+// In-memory cache: avoids redundant network calls when the same city is looked
+// up again within a few minutes (e.g. during live demo/testing), while still
+// reflecting genuinely current conditions.
+const aqiCache={};
+const AQI_CACHE_TTL_MS=5*60*1000;
+/** Geocodes a city and fetches its current US AQI/PM2.5/PM10 from Open-Meteo. Cached per city for AQI_CACHE_TTL_MS to avoid redundant calls. */
+async function fetchLiveAQI(cityName){
+  const cacheKey=cityName.trim().toLowerCase();
+  const cached=aqiCache[cacheKey];
+  if(cached && (Date.now()-cached.time)<AQI_CACHE_TTL_MS) return cached.data;
+  const geoRes=await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name='+encodeURIComponent(cityName));
+  if(!geoRes.ok) throw new Error('location lookup failed');
+  const geo=await geoRes.json();
+  if(!geo.results || !geo.results.length) throw new Error('city not found');
+  const loc=geo.results[0];
+  const aqRes=await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+loc.latitude+'&longitude='+loc.longitude+'&current=us_aqi,pm2_5,pm10&timezone=auto');
+  if(!aqRes.ok) throw new Error('air quality lookup failed');
+  const aq=await aqRes.json();
+  const cur=aq.current;
+  if(!cur || cur.us_aqi==null) throw new Error('no air quality data for this location');
+  const usAqi=Math.round(cur.us_aqi);
+  const data={resolvedName:loc.name, country:loc.country||'', usAqi:usAqi, pm25:cur.pm2_5, tier:usAqiToTier(usAqi)};
+  aqiCache[cacheKey]={data:data, time:Date.now()};
+  return data;
+}
+function getFormInputs(){
+  const v=id=>document.getElementById(id);
+  return {city:v('city').value.trim()||'your area', aqi:v('aqi').value, commute:v('commute').value,
+    home:v('home').value, purifier:v('purifier').checked, kids:v('kids').checked||v('elderly').checked,
+    resp:v('resp').checked, outdoor:v('outdoor').checked, novehicle:v('novehicle').checked};
+}
+/**
+ * Pure function: turns raw form inputs (city/AQI tier/commute/home/household
+ * flags) into a structured set of derived facts (severity, risk levels,
+ * action level, local smog-pattern note). No DOM access, so it's directly
+ * unit-testable -- see tests.html.
+ */
+function deriveFacts(inputs){
+  const city=inputs.city, aqi=inputs.aqi;
+  const sevMap={'Good':0,'Moderate':1,'Unhealthy for sensitive groups':2,'Unhealthy':3,'Very unhealthy':4,'Hazardous':5};
+  const sev=(sevMap[aqi] ?? 2);
+  const commute=inputs.commute, home=inputs.home, purifier=inputs.purifier;
+  const kids=inputs.kids, resp=inputs.resp, outdoor=inputs.outdoor, novehicle=inputs.novehicle;
+  const tier=['Low','Low','Moderate','Elevated','High','Severe'][sev];
+  const sensitiveUrgent = sev>=3 && (kids||resp);
+  const outdoorRisk = outdoor && sev>=2;
+  let commuteRisk='Low';
+  if(commute==='Two-wheeler / scooter') commuteRisk = sev>=2?'High':'Moderate';
+  else if(commute==='Car') commuteRisk = sev>=3?'Moderate':'Low';
+  else if(commute==='Walk or cycle') commuteRisk = sev>=3?'High':'Moderate';
+  else if(commute==='Public transit (bus/metro)') commuteRisk='Moderate';
+  let indoorRisk='Low';
+  if(!purifier && home==='Apartment' && sev>=3) indoorRisk='Elevated';
+  else if(!purifier && sev>=3) indoorRisk='Moderate';
+  const actionLevel = sensitiveUrgent ? 'urgent' : (sev>=3 ? 'elevated' : 'routine');
+  const cityLower=city.toLowerCase();
+  let regionNote=null;
+  if(cityLower.includes('delhi')||cityLower.includes('ncr')||cityLower.includes('gurugram')||cityLower.includes('noida')) regionNote='Winter smog here is driven heavily by crop-residue burning plus temperature inversion, typically peaking late Oct through Jan.';
+  else if(cityLower.includes('lahore')||cityLower.includes('punjab')) regionNote='This region shares the same cross-border crop-burning and inversion pattern as nearby North India, peaking in the same Oct\u2013Jan window.';
+  else if(cityLower.includes('dhaka')) regionNote='Dhaka\u2019s dry-season smog (roughly Nov\u2013Feb) is driven more by vehicle and brick-kiln emissions trapped by low winter wind speeds.';
+  return {city,aqi,sev,tier,commute,home,purifier,kids,resp,outdoor,novehicle,sensitiveUrgent,outdoorRisk,commuteRisk,indoorRisk,actionLevel,regionNote};
+}
+/** Turns deriveFacts()'s output into the plain-text "signals" handed to Claude as grounding context -- the rule engine's conclusions, not raw inputs. */
+function computeAssessment(inputs){
+  const f=deriveFacts(inputs);
+  const signals=['City: '+f.city,'AQI tier: '+f.tier+' ('+f.aqi+')','Overall action level: '+f.actionLevel,
+    'Commute exposure risk ('+f.commute+'): '+f.commuteRisk,
+    'Indoor air risk ('+f.home+(f.purifier?', has purifier':', no purifier')+'): '+f.indoorRisk];
+  if(f.sensitiveUrgent) signals.push('Flag: a child, elderly person, or someone with a respiratory condition is in this household at an elevated-or-higher AQI tier \u2014 treat as high priority.');
+  if(f.outdoorRisk) signals.push('Flag: this person must be outdoors for work at an elevated-or-higher AQI tier.');
+  if(f.novehicle) signals.push('Flag: relies on walking or a two-wheeler, limited vehicle access.');
+  if(f.regionNote) signals.push('Local pattern: '+f.regionNote);
+  return signals;
+}
+function buildInitialPrompt(signals){
+  return 'A rule engine has already assessed this household\u2019s situation using live air-quality data. Use these computed signals as ground truth \u2014 do not re-grade severity yourself, just explain and act on them:\n\n'
+  +signals.join('\n')
+  +'\n\nWrite a personalized plan for this household. Use this exact structure, plain text with simple markdown (## headers, - bullets, **bold** for key numbers), no preamble, no closing remarks:\n\n'
+  +'## Today\'s low-emission routine\n3 to 4 short, concrete bullets, matching the urgency of the action level above.\n\n'
+  +'## Indoor air quality hacks\n3 to 4 bullets matching the indoor air risk above.\n\n'
+  +'## Sustainable alternatives for your commute\n3 to 4 bullets matching the commute risk above, each naming a rough emissions or exposure comparison.\n\n'
+  +'## Community actions\n2 bullets on collective, neighborhood-level steps (carpools, reporting pollution sources to local authorities, joining or starting a local air-quality watch group) relevant to this city and commute mode \u2014 this is about community impact, not just the individual household.\n\n'
+  +'## Why this matters for your household\n2 to 3 plain-language sentences that reference the specific flags above, including the local smog pattern note if one was given.';
+}
+function section(title, items){
+  return '<h3>'+title+'</h3><ul>'+items.map(function(i){return '<li>'+i+'</li>';}).join('')+'</ul>';
+}
+/** Returns a caring warning banner's HTML for sev>=3 (Unhealthy or worse), worded more urgently when a vulnerable household member is flagged; empty string otherwise. */
+function warningBanner(f){
+  if(f.sev<3) return '';
+  const text = f.sensitiveUrgent
+    ? 'Please take this seriously today \u2014 with '+f.tier.toLowerCase()+' air and a child, elder, or someone with a respiratory condition at home, this is a day to actively protect them, not just note the forecast.'
+    : 'Heads up \u2014 air quality today is '+f.tier.toLowerCase()+'. Even healthy adults should limit prolonged outdoor exertion.';
+  return '<div class="warn-banner">\u26a0\ufe0f <strong>'+(f.sensitiveUrgent?'Please take this seriously today.':'Heads up.')+'</strong> '+text+'</div>';
+}
+/** Renders the complete five-section plan (plus warning banner) as HTML, entirely from deriveFacts() -- no network or AI call, so this always succeeds instantly. */
+function generateFallbackPlan(inputs){
+  const f=deriveFacts(inputs);
+  const routine=[];
+  routine.push('Check today\u2019s AQI for '+f.city+' before heading out, and plan errands around the quieter midday hours rather than early morning or evening rush.');
+  if(f.sev>=2) routine.push('Shift outdoor exercise or walks to midday, when traffic-driven smog is usually lower than at sunrise or dusk.');
+  if(f.sev>=3) routine.push('Wear a well-fitted N95/FFP2 mask for any time spent outdoors today.');
+  if(f.sev>=4) routine.push('Postpone non-essential outdoor errands entirely \u2014 today\u2019s level is high enough that even short exposure adds up.');
+  if(f.outdoorRisk) routine.push('If you must work outdoors, take an indoor mask-off break every couple of hours rather than one long stretch outside.');
+  if(f.sensitiveUrgent) routine.push('Keep kids, elderly family members, or anyone with a respiratory condition indoors during the morning and evening peak hours.');
+  const indoor=[];
+  if(f.purifier){
+    indoor.push('Run your air purifier on a medium, continuous setting in the room you spend most time in, rather than switching it on and off.');
+    indoor.push('Close the door to that room so the purified air doesn\u2019t mix straight back with the rest of the home.');
+  } else {
+    indoor.push('No purifier? A box fan with a HEPA filter taped to the intake works as a low-cost stand-in for a bedroom or living room.');
+    indoor.push('Keep a damp cloth or towel in the main room \u2014 it helps settle floating dust between cleanings.');
+  }
+  if(f.home==='Apartment') indoor.push('Keep windows closed and use a draft stopper on the main door; apartments pick up a surprising amount of smog through hallway gaps.');
+  else indoor.push('Check and seal gaps around external doors, and keep courtyard or balcony doors shut during the morning and evening peaks.');
+  indoor.push('Avoid burning candles, incense, or anything that adds extra particulate matter indoors on high-smog days.');
+  const commuteAlt=[];
+  if(f.commute==='Car'){
+    commuteAlt.push('Combine errands into one trip instead of several short drives \u2014 cold starts produce disproportionately more emissions.');
+    commuteAlt.push('Carpool or switch to public transit for a couple of days this week to meaningfully cut your own contribution.');
+  } else if(f.commute==='Two-wheeler / scooter'){
+    commuteAlt.push('Two-wheeler riders get some of the highest direct exposure in traffic \u2014 a snug mask matters more for you than almost anyone else on the road.');
+  } else if(f.commute==='Public transit (bus/metro)'){
+    commuteAlt.push('You\u2019re already on one of the lower-emission options \u2014 travelling just outside peak hours will cut your personal exposure further.');
+  } else if(f.commute==='Walk or cycle'){
+    commuteAlt.push('Pick a route with less traffic, even if it\u2019s slightly longer \u2014 exposure drops fast with distance from exhaust.');
+    if(f.sev>=3) commuteAlt.push('On days this bad, consider swapping today\u2019s walk or ride for an indoor alternative.');
+  } else {
+    commuteAlt.push('Staying home today is one of the lowest-exposure choices available \u2014 use the indoor tips above to keep that advantage.');
+  }
+  if(f.novehicle) commuteAlt.push('Since you\u2019re often walking or on two-wheels, timing matters more for you than vehicle choice \u2014 avoid the worst hour or two if your schedule allows it.');
+  const community=[
+    'Start or join a small carpool or ride-share group with neighbors who share your commute route \u2014 fewer cars on the same road cuts everyone\u2019s exposure.',
+    'Report persistent local burning, construction dust, or industrial smoke to your local pollution-control helpline \u2014 collective reports carry more weight than one-off complaints.'
+  ];
+  const impact=[];
+  impact.push('At today\u2019s \u201c'+f.aqi.toLowerCase()+'\u201d level, these small shifts meaningfully cut how much smog your household actually breathes in, especially during the morning and evening hours when pollution usually peaks.');
+  if(f.regionNote) impact.push(f.regionNote);
+  if(f.sensitiveUrgent) impact.push('Children, older adults, and anyone with a respiratory condition absorb pollution\u2019s effects faster than a healthy adult, so the indoor-time and masking choices above matter most for them.');
+  return warningBanner(f)
+    + section('🚶 Today\u2019s low-emission routine', routine)
+    + section('🏠 Indoor air quality hacks', indoor)
+    + section('🚲 Sustainable alternatives for your commute', commuteAlt)
+    + section('🤝 Community actions', community)
+    + section('💡 Why this matters for your household', impact);
+}
+let convo=[]; let lastInputs=null;
+function showPlan(){
+  lastInputs=getFormInputs();
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('result').innerHTML=generateFallbackPlan(lastInputs);
+  document.getElementById('enrichRow').style.display='block';
+  const enrichBtn=document.getElementById('enrichBtn'); enrichBtn.disabled=false; enrichBtn.textContent='✨ Get a richer AI explanation';
+  document.getElementById('resultHeading').focus();
+}
+document.getElementById('form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const goBtn=document.getElementById('go');
+  if(goBtn.disabled) return; // prevents duplicate concurrent fetches from rapid re-clicks
+  goBtn.disabled=true; goBtn.textContent='Fetching…';
+  document.getElementById('chat').innerHTML='';
+  document.getElementById('followupForm').style.display='none';
+  document.getElementById('manualAqiRow').style.display='none';
+  document.getElementById('liveReading').style.display='none';
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('result').innerHTML='<p class="muted">Fetching real-time air quality…</p>';
+  const cityName=document.getElementById('city').value.trim();
+  if(!cityName){ document.getElementById('result').innerHTML='<p class="muted">Enter a city first.</p>'; goBtn.disabled=false; goBtn.textContent='Get my plan'; return; }
+  try{
+    const live=await fetchLiveAQI(cityName);
+    const c=aqiColor(live.usAqi);
+    const pct=Math.min(100, Math.round(live.usAqi/500*100));
+    const lr=document.getElementById('liveReading');
+    lr.innerHTML='<div class="aqi-display">'
+      +'<div class="aqi-badge" style="background:'+c.bg+'; color:'+c.fg+';"><div class="aqi-num">'+live.usAqi+'</div><div class="aqi-label">US AQI</div></div>'
+      +'<div class="aqi-meta"><div class="aqi-city">📍 '+esc(live.resolvedName)+(live.country?', '+esc(live.country):'')+' \u2014 '+esc(live.tier)+'</div>'
+      +'<div class="aqi-gauge"><div class="aqi-gauge-fill" style="width:'+pct+'%; background:'+c.bg+';"></div></div>'
+      +'<p class="muted" style="margin:0;">PM2.5: '+live.pm25+' \u00b5g/m\u00b3 \u00b7 Source: Open-Meteo \u00b7 just now</p></div></div>';
+    lr.style.display='block';
+    document.getElementById('aqi').value=live.tier;
+    showPlan();
+  }catch(err){
+    document.getElementById('manualAqiRow').style.display='block';
+    document.getElementById('manualAqiMsg').textContent='Couldn\u2019t fetch live data for "'+cityName+'" ('+(err && err.message)+'). Pick a level manually and click "Use this instead."';
+    document.getElementById('result').innerHTML='';
+    document.getElementById('resultCard').style.display='none';
+  } finally {
+    goBtn.disabled=false; goBtn.textContent='Get my plan';
+  }
+});
+document.getElementById('manualGoBtn').addEventListener('click', showPlan);
+document.getElementById('enrichBtn').addEventListener('click', async function(){
+  const btn=this; btn.disabled=true; btn.textContent='Asking Claude…';
+  const result=document.getElementById('result');
+  try{
+    const sample=await claude.use('sample');
+    if(!sample){ throw {code:'no_sample'}; }
+    const prompt=buildInitialPrompt(computeAssessment(lastInputs));
+    const res=await sample(prompt,{modelTier:'default',onText:function(o){ result.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
+    result.innerHTML=renderMd(res.text);
+    convo=[{role:'user',content:prompt},{role:'assistant',content:res.text}];
+    document.getElementById('followupForm').style.display='flex';
+    document.getElementById('enrichRow').style.display='none';
+  }catch(err){
+    const code=err && err.code;
+    let msg;
+    if(code==='not_granted') msg='AI permission wasn\u2019t granted \u2014 the recommendations above are the built-in plan.';
+    else if(code==='rate_limited') msg='The AI assistant is busy right now \u2014 try again shortly.';
+    else msg='Live AI isn\u2019t available in this view \u2014 the recommendations above are the built-in plan.';
+    btn.insertAdjacentHTML('afterend','<p class="muted" style="margin-top:8px;">'+msg+'</p>');
+    btn.disabled=false; btn.textContent='✨ Get a richer AI explanation';
+  }
+});
+document.getElementById('followupForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const input=document.getElementById('followup'); const q=input.value.trim();
+  if(!q) return;
+  const chat=document.getElementById('chat'); const askBtn=document.getElementById('askBtn');
+  chat.insertAdjacentHTML('beforeend','<p class="msg-user"><strong>You:</strong> '+esc(q)+'</p>');
+  input.value=''; input.disabled=true; askBtn.disabled=true;
+  const holder=document.createElement('div'); holder.className='msg-ai'; holder.innerHTML='<p class="muted">Thinking…</p>';
+  chat.appendChild(holder);
+  convo.push({role:'user',content:q});
+  try{
+    const sample=await claude.use('sample');
+    const res=await sample(convo,{modelTier:'default',onText:function(o){ holder.innerHTML='<p class="stream">'+esc(o.text)+'</p>'; }});
+    holder.innerHTML=renderMd(res.text);
+    convo.push({role:'assistant',content:res.text});
+  }catch(err){
+    holder.innerHTML='<p class="muted">Couldn\u2019t get an answer just now \u2014 try again.</p>';
+    convo.pop();
+  }
+  input.disabled=false; askBtn.disabled=false; input.focus();
+});
+</script>
+</body>
+</html>
