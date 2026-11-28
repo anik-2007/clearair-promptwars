@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Dependency-free browser tests for the ClearAir application logic.">
+<title>ClearAir — Automated Tests</title>
+<style>
+  :root{color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  body{max-width:960px;margin:32px auto;padding:0 16px;line-height:1.55;color:CanvasText;background:Canvas}
+  h1{margin-bottom:4px}.muted{opacity:.75}.summary{padding:14px;border-radius:12px;background:color-mix(in srgb,CanvasText 7%,Canvas);margin:16px 0}
+  .pass{color:#168044}.fail{color:#c62828}li{padding:6px 0;border-bottom:1px solid color-mix(in srgb,CanvasText 15%,Canvas)}
+  iframe{width:1px;height:1px;position:absolute;left:-10000px;border:0}button{min-height:44px;padding:10px 16px;border:0;border-radius:8px;background:#23864d;color:white;font:inherit;font-weight:700;cursor:pointer}
+  button:focus-visible{outline:3px solid #2684ff;outline-offset:3px}.meta{font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>ClearAir automated test suite</h1>
+<p class="muted">Tests run against the actual pure functions exported by <code>index.html</code>. No live API or AI requests are made.</p>
+<p class="meta">Keep <code>tests.html</code> and <code>index.html</code> in the same directory.</p>
+<button id="run" type="button">Run tests again</button>
+<div id="summary" class="summary" role="status" aria-live="polite" aria-atomic="true">Loading application test surface…</div>
+<ol id="results" aria-label="Test results"></ol>
+<iframe id="app" title="ClearAir test instance" src="index.html"></iframe>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const base = Object.freeze({
+    city:'Kolkata',aqi:'Good',commute:'Car',home:'Apartment',
+    purifier:false,kids:false,elderly:false,resp:false,outdoor:false,novehicle:false
+  });
+  const tests=[];
+  const assert=(condition,message)=>{if(!condition)throw new Error(message);};
+  const equal=(actual,expected,message)=>assert(Object.is(actual,expected),`${message}; expected ${String(expected)}, got ${String(actual)}`);
+  const add=(name,fn)=>tests.push({name,fn});
+
+  add('Test API is frozen and exposes required functions',api=>{
+    assert(Object.isFrozen(api),'API object must be frozen');
+    ['getAqiLevel','categoryToSeverity','deriveFacts','computeAssessment','buildPlanData','getRegionalContext','renderMarkdownSafely'].forEach(k=>equal(typeof api[k],'function',`${k} export`));
+  });
+  add('AQI 0 maps to Good',api=>equal(api.getAqiLevel(0).label,'Good','AQI 0'));
+  add('AQI 50 maps to Good',api=>equal(api.getAqiLevel(50).label,'Good','AQI 50'));
+  add('AQI 51 maps to Moderate',api=>equal(api.getAqiLevel(51).label,'Moderate','AQI 51'));
+  add('AQI 100 maps to Moderate',api=>equal(api.getAqiLevel(100).label,'Moderate','AQI 100'));
+  add('AQI 101 maps to sensitive groups',api=>equal(api.getAqiLevel(101).label,'Unhealthy for sensitive groups','AQI 101'));
+  add('AQI 150 maps to sensitive groups',api=>equal(api.getAqiLevel(150).label,'Unhealthy for sensitive groups','AQI 150'));
+  add('AQI 151 maps to Unhealthy',api=>equal(api.getAqiLevel(151).label,'Unhealthy','AQI 151'));
+  add('AQI 200 maps to Unhealthy',api=>equal(api.getAqiLevel(200).label,'Unhealthy','AQI 200'));
+  add('AQI 201 maps to Very unhealthy',api=>equal(api.getAqiLevel(201).label,'Very unhealthy','AQI 201'));
+  add('AQI 300 maps to Very unhealthy',api=>equal(api.getAqiLevel(300).label,'Very unhealthy','AQI 300'));
+  add('AQI 301 maps to Hazardous',api=>equal(api.getAqiLevel(301).label,'Hazardous','AQI 301'));
+  add('AQI 500 maps to Hazardous',api=>equal(api.getAqiLevel(500).label,'Hazardous','AQI 500'));
+  add('AQI above 500 remains in Hazardous band',api=>equal(api.getAqiLevel(700).label,'Hazardous','AQI 700'));
+  add('Negative AQI is rejected',api=>equal(api.getAqiLevel(-1),null,'negative AQI'));
+  add('Non-numeric AQI is rejected',api=>equal(api.getAqiLevel('not-a-number'),null,'nonnumeric AQI'));
+  add('Null AQI is rejected instead of becoming zero',api=>equal(api.getAqiLevel(null),null,'null AQI'));
+  add('Empty AQI is rejected instead of becoming zero',api=>equal(api.getAqiLevel('   '),null,'empty AQI'));
+  add('Boolean AQI is rejected',api=>equal(api.getAqiLevel(false),null,'boolean AQI'));
+  add('Numeric-string AQI is normalized',api=>equal(api.getAqiLevel('51').label,'Moderate','numeric string'));
+  add('AQI category severity follows ordered bands',api=>{
+    ['Good','Moderate','Unhealthy for sensitive groups','Unhealthy','Very unhealthy','Hazardous'].forEach((v,i)=>equal(api.categoryToSeverity(v),i,`${v} severity`));
+  });
+  add('Good air has routine action level',api=>equal(api.deriveFacts(base).actionLevel,'routine','Good AQI'));
+  add('Unhealthy air elevates action level',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy'}).actionLevel,'elevated','Unhealthy AQI'));
+  add('Respiratory condition triggers priority flag',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy',resp:true}).sensitiveUrgent,true,'respiratory priority'));
+  add('Children flag is recognized independently',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy',kids:true}).sensitiveUrgent,true,'children priority'));
+  add('Older adult flag is recognized independently',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy',elderly:true}).sensitiveUrgent,true,'older adult priority'));
+  add('Vulnerability is not urgent at Good AQI',api=>equal(api.deriveFacts({...base,kids:true}).sensitiveUrgent,false,'Good AQI vulnerability'));
+  add('Outdoor work is flagged at sensitive-groups level',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy for sensitive groups',outdoor:true}).outdoorRisk,true,'outdoor flag'));
+  add('Outdoor work is not flagged when not selected',api=>equal(api.deriveFacts({...base,aqi:'Hazardous'}).outdoorRisk,false,'outdoor not selected'));
+  add('Walk/cycle exposure is high at Unhealthy',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy',commute:'Walk or cycle'}).commuteRisk,'High','walk/cycle risk'));
+  add('Two-wheeler exposure is high at Unhealthy',api=>equal(api.deriveFacts({...base,aqi:'Unhealthy',commute:'Two-wheeler / scooter'}).commuteRisk,'High','two-wheeler risk'));
+  add('Public transit risk responds to AQI',api=>equal(api.deriveFacts({...base,aqi:'Good',commute:'Public transit (bus/metro)'}).commuteRisk,'Low','transit low'));
+  add('Car risk increases at Very unhealthy',api=>equal(api.deriveFacts({...base,aqi:'Very unhealthy',commute:'Car'}).commuteRisk,'Moderate','car risk'));
+  add('Purifier status is retained in facts',api=>equal(api.deriveFacts({...base,purifier:true}).purifier,true,'purifier flag'));
+  add('No purifier at Very unhealthy raises apartment indoor risk',api=>equal(api.deriveFacts({...base,aqi:'Very unhealthy'}).indoorRisk,'High','apartment indoor risk'));
+  add('Purifier changes high-AQI indoor risk',api=>equal(api.deriveFacts({...base,aqi:'Very unhealthy',purifier:true}).indoorRisk,'Low','purifier indoor risk'));
+  add('Invalid AQI category is rejected',api=>{
+    let threw=false;try{api.deriveFacts({...base,aqi:'Unknown'});}catch(e){threw=e && e.name==='RangeError';}
+    assert(threw,'Invalid category should throw RangeError');
+  });
+  add('Missing assessment input is rejected',api=>{
+    let threw=false;try{api.deriveFacts(null);}catch(e){threw=e && e.name==='TypeError';}
+    assert(threw,'Missing input should throw TypeError');
+  });
+  add('Plan has all five non-empty sections',api=>{
+    const p=api.buildPlanData(base);
+    ['routine','indoor','commute','community','impact'].forEach(k=>assert(Array.isArray(p[k])&&p[k].length>0,`${k} section missing`));
+  });
+  add('High AQI plan includes stronger precautions',api=>{
+    const p=api.buildPlanData({...base,aqi:'Hazardous'});
+    assert(p.routine.some(x=>x.toLowerCase().includes('postpone')),'No high-AQI precaution');
+  });
+  add('Plan adapts to walking commute',api=>assert(api.buildPlanData({...base,commute:'Walk or cycle'}).commute.some(x=>x.toLowerCase().includes('route')),'Walking advice missing'));
+  add('Plan adapts to purifier availability',api=>assert(api.buildPlanData({...base,purifier:true}).indoor.some(x=>x.toLowerCase().includes('filter')),'Filter advice missing'));
+  add('Assessment returns structured signals',api=>assert(api.computeAssessment(base).length>=5,'Insufficient assessment signals'));
+  add('Delhi-NCR context mentions crop-residue burning and inversion',api=>{
+    const n=api.getRegionalContext('Delhi');assert(n&&n.toLowerCase().includes('crop-residue')&&n.toLowerCase().includes('inversion'),'Delhi context missing');
+  });
+  add('NCR city alias resolves to regional context',api=>assert(!!api.getRegionalContext('Gurugram'),'Gurugram context missing'));
+  add('Noida resolves to regional context',api=>assert(!!api.getRegionalContext('Noida'),'Noida context missing'));
+  add('Lahore context includes seasonal crop-residue contribution',api=>{
+    const n=api.getRegionalContext('Lahore');assert(n&&n.toLowerCase().includes('crop-residue')&&n.toLowerCase().includes('seasonal'),'Lahore context missing');
+  });
+  add('Dhaka context includes brick kilns and traffic',api=>{
+    const n=api.getRegionalContext('Dhaka');assert(n&&n.toLowerCase().includes('brick kilns')&&n.toLowerCase().includes('traffic'),'Dhaka context missing');
+  });
+  add('Regional context appears in assessment signals',api=>assert(api.computeAssessment({...base,city:'Delhi'}).some(x=>x.includes('Regional seasonal context')),'Regional signal missing'));
+  add('Regional context appears in generated plan',api=>assert(api.buildPlanData({...base,city:'Dhaka'}).impact.some(x=>x.toLowerCase().includes('brick kilns')),'Regional plan callout missing'));
+  add('Unknown city gets no invented regional callout',api=>equal(api.getRegionalContext('Wellington'),null,'unknown city context'));
+  add('Broad Punjab region is not mislabeled as Lahore city context',api=>equal(api.getRegionalContext('Punjab'),null,'Punjab regional context'));
+  add('Empty city gets no regional callout',api=>equal(api.getRegionalContext(''),null,'empty city context'));
+  add('HTML-like input is rendered as literal text',api=>{
+    const f=api.renderMarkdownSafely('<img src=x onerror=alert(1)>');
+    equal(f.querySelector('img'),null,'unsafe image node');assert(f.textContent.includes('<img'),'literal text lost');
+  });
+  add('Script payload creates no executable script element',api=>{
+    const f=api.renderMarkdownSafely('<scr'+'ipt>alert(1)</scr'+'ipt>');equal(f.querySelector('script'),null,'script node created');
+  });
+  add('Markdown headings are rendered as semantic headings',api=>equal(api.renderMarkdownSafely('## Heading').querySelector('h3')?.textContent,'Heading','heading renderer'));
+  add('Markdown list items are rendered as list text',api=>equal(api.renderMarkdownSafely('- safe item').querySelector('li')?.textContent,'safe item','list renderer'));
+  add('Renderer only creates the supported safe element set',api=>{
+    const f=api.renderMarkdownSafely('## title\n- item\nordinary <b>text</b>');
+    const allowed=new Set(['H3','UL','LI','P']);
+    [...f.querySelectorAll('*')].forEach(n=>assert(allowed.has(n.tagName),`Unexpected element ${n.tagName}`));
+  });
+  add('Application has a main landmark', (api,doc)=>assert(!!doc.querySelector('main'),'main landmark missing'));
+  add('Skip link targets the main form', (api,doc)=>equal(doc.querySelector('.skip-link')?.getAttribute('href'),'#form','skip link target'));
+  add('City input has an associated label', (api,doc)=>assert(doc.getElementById('city').labels.length>0,'city label missing'));
+  add('Commute, home and AQI controls have labels', (api,doc)=>['commute','home','aqi'].forEach(id=>assert(doc.getElementById(id).labels.length>0,`${id} label missing`)));
+  add('Household checkboxes have accessible labels', (api,doc)=>['kids','elderly','resp','outdoor','novehicle','purifier'].forEach(id=>assert(doc.getElementById(id).labels.length>0,`${id} label missing`)));
+  add('Household options are grouped with a legend', (api,doc)=>assert(!!doc.querySelector('fieldset legend'),'fieldset legend missing'));
+  add('Dynamic results use a polite live region', (api,doc)=>equal(doc.getElementById('result').getAttribute('aria-live'),'polite','result live region'));
+  add('Keyboard focus styling is present', (api,doc)=>assert(doc.querySelector('style').textContent.includes(':focus-visible'),'focus-visible style missing'));
+  add('Reduced-motion preference is respected', (api,doc)=>assert(doc.querySelector('style').textContent.includes('prefers-reduced-motion: reduce'),'reduced-motion rule missing'));
+
+  let running=false;
+  async function run(){
+    if(running)return;running=true;
+    $('run').disabled=true;$('summary').textContent='Running tests…';$('results').replaceChildren();
+    try{
+      const frame=$('app');
+      if(!frame.contentWindow?.ClearAirTestAPI){
+        if(frame.contentDocument?.readyState==='complete')throw new Error('Application loaded but its test API is unavailable. Check index.html for JavaScript errors.');
+        await new Promise((resolve,reject)=>{
+          const timer=setTimeout(()=>reject(new Error('Application test API did not load within 8 seconds.')),8000);
+          frame.addEventListener('load',()=>{clearTimeout(timer);resolve();},{once:true});
+        });
+      }
+      const api=frame.contentWindow?.ClearAirTestAPI;
+      if(!api)throw new Error('Test API unavailable. Keep index.html and tests.html in the same folder.');
+      let passed=0;
+      for(const t of tests){
+        const li=document.createElement('li');
+        try{t.fn(api,frame.contentDocument);li.className='pass';li.textContent='PASS — '+t.name;passed++;}
+        catch(e){li.className='fail';li.textContent='FAIL — '+t.name+' — '+e.message;}
+        $('results').appendChild(li);
+      }
+      const failed=tests.length-passed;
+      $('summary').textContent=`${passed}/${tests.length} tests passed${failed?`; ${failed} failed`:''}.`;
+      $('summary').className='summary '+(failed?'fail':'pass');
+    }catch(e){$('summary').textContent='Test runner error: '+e.message;$('summary').className='summary fail';}
+    finally{$('run').disabled=false;running=false;}
+  }
+  $('run').addEventListener('click',run);
+  if($('app').contentWindow?.ClearAirTestAPI) run();
+  else $('app').addEventListener('load',run,{once:true});
+})();
+</script>
+</body>
+</html>
